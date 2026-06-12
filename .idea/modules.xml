@@ -2,8 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$USER_HOME$/Documents/4-3ApplicationDevelopment/Lab4/GUIMathProject/.idea/GUIMathProject.iml" filepath="$USER_HOME$/Documents/4-3ApplicationDevelopment/Lab4/GUIMathProject/.idea/GUIMathProject.iml" />
-      <module fileurl="file://$USER_HOME$/Documents/4-3ApplicationDevelopment/Lab4/GUIShapeProject/.idea/GUIShapeProject.iml" filepath="$USER_HOME$/Documents/4-3ApplicationDevelopment/Lab4/GUIShapeProject/.idea/GUIShapeProject.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/pyqt6.iml" filepath="$PROJECT_DIR$/.idea/pyqt6.iml" />
     </modules>
   </component>

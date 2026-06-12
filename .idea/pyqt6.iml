@@ -6,7 +6,5 @@
     </content>
     <orderEntry type="jdk" jdkName="Python 3.14 (BioAgentAppDev)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="module" module-name="GUIMathProject" />
-    <orderEntry type="module" module-name="GUIShapeProject" />
   </component>
 </module>

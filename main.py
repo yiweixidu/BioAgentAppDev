@@ -2,7 +2,7 @@ import sys
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QGridLayout, QLineEdit
 
-from _gui_window import MainWindow
+from gui.main_window import MainWindow
 
 def main():
     # you can instantiate object from QApplication

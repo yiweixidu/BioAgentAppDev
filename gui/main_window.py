@@ -1,12 +1,12 @@
-# _gui_window.py – Whimsigoth v2 (lighter + vivid borders)
+# main_window.py – Whimsigoth v2 (lighter + vivid borders)
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
-from dashboard_tab   import DashboardTab
-from researcher_tab  import ResearcherTab
-from projects_tab    import ProjectsTab
-from knowledge_tab   import KnowledgeTab
-from hypothesis_tab  import HypothesisTab
-from inference_tab   import InferenceTab
-from grant_tab       import GrantTab
+from gui.tabs.dashboard_tab import DashboardTab
+from gui.tabs.researcher_tab import ResearcherTab
+from gui.tabs.projects_tab import ProjectsTab
+from gui.tabs.knowledge_tab import KnowledgeTab
+from gui.tabs.hypothesis_tab import HypothesisTab
+from gui.tabs.inference_tab import InferenceTab
+from gui.tabs.grant_tab import GrantTab
 
 QSS = """
 /* ── Root ────────────────────────────────────────────────────────────────── */

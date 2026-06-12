@@ -1,0 +1,20 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# PyCharm settings
+.idea/
+
+# Database credentials (important!)
+config/db_config.py
+
+# OS files
+.DS_Store
+Thumbs.db
