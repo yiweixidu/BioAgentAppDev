@@ -1,8 +1,9 @@
 # models/researcher.py
 
 class Researcher:
-    def __init__(self, res_id, name, institution, pi,
-                 domain, role, email, password=""):
+    def __init__(self, res_id="", name="", institution="",
+                 pi="", domain="", role="researcher",
+                 email="", password=""):
         self.__res_id      = res_id
         self.__name        = name
         self.__institution = institution
@@ -22,6 +23,7 @@ class Researcher:
     def getEmail(self):       return self.__email
 
     # ── Setters ──────────────────────────────────────────
+    def setResId(self, v):       self.__res_id = v
     def setName(self, v):        self.__name = v
     def setInstitution(self, v): self.__institution = v
     def setPi(self, v):          self.__pi = v

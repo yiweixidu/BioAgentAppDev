@@ -94,7 +94,7 @@ VALUES
 
 -- ── Grant Funds ───────────────────────────────────────────
 INSERT INTO grant_fund
-    (grant_id, project_id, agency, deadline, total, used)
+    (grant_id, project_id, grant_type, deadline, total, used)
 VALUES
     ('GR-001', 'PRJ-101', 'CIHR',  '2026-08-30', 120000, 42000),
     ('GR-002', 'PRJ-102', 'NSERC', '2026-07-15',  85000, 25500);
@@ -129,3 +129,22 @@ VALUES
      'Dr. Liwei Rong',  'UPDATE',
      'Hypothesis H14',
      'PENDING -> REFUTED (IC50 unchanged in SPR assay)');
+
+-- ── App Options ───────────────────────────────────────────
+INSERT INTO app_options (category, value) VALUES
+('domain', 'flu_bnab'),
+('domain', 'noncoding_dna'),
+('domain', 'antibiotic_resistance'),
+('domain', 'oncology'),
+('domain', 'general'),
+('grant',  'CIHR'),
+('grant',  'NSERC'),
+('grant',  'MITACS'),
+('grant',  'Génome Québec'),
+('grant',  'FRQS'),
+('role',   'researcher'),
+('role',   'lab_manager'),
+('role',   'admin'),
+('status', 'active'),
+('status', 'planning'),
+('status', 'archived');

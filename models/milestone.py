@@ -1,8 +1,8 @@
 # models/milestone.py
 
 class Milestone:
-    def __init__(self, grant_id, desc,
-                 due, completed=False, id=None):
+    def __init__(self, grant_id="", desc="",
+                 due="", completed=False, id=None):
         self.__id        = id          # MySQL AUTO_INCREMENT id
         self.__grant_id  = grant_id
         self.__desc      = desc
@@ -17,6 +17,8 @@ class Milestone:
     def isCompleted(self): return self.__completed
 
     # ── Setters ──────────────────────────────────────────
+    def setGrantId(self, v): self.__grant_id = v
+    def setCompleted(self, v): self.__completed = bool(v)
     def setDesc(self, v): self.__desc = v
     def setDue(self, v):  self.__due = str(v)
 

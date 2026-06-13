@@ -41,7 +41,7 @@ class GrantDAO:
 
     def _to_grant(self, r):
         return Grant(
-            r["grant_id"], r["project_id"], r["agency"],
+            r["grant_id"], r["project_id"], r["grant_type"],
             r["deadline"], r["total"], r["used"]
         )
 
@@ -50,3 +50,9 @@ class GrantDAO:
             r["grant_id"], r["descr"], r["due"],
             bool(r["completed"]), r["id"]
         )
+
+    def delete_milestone(self, milestone_id: int):
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM milestone WHERE id=%s", (milestone_id,))
+            conn.commit()

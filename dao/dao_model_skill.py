@@ -12,6 +12,15 @@ class ModelSkillDAO:
                 rows = cur.fetchall()
         return [self._to_obj(r) for r in rows]
 
+    def get_active(self):
+        """Return only skills with status='active', used by InferenceTab model picker."""
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM model_skill WHERE status='active' ORDER BY skill_id")
+                rows = cur.fetchall()
+        return [self._to_obj(r) for r in rows]
+
     def insert(self, s: ModelSkill):
         sql = """INSERT INTO model_skill
                  (skill_id, name, project_id, lora_version,

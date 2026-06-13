@@ -53,3 +53,29 @@ class ResearcherDAO:
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) AS cnt FROM researcher")
                 return cur.fetchone()["cnt"]
+
+    def update(self, r: Researcher):
+        sql = """UPDATE researcher
+                 SET name=%s, institution=%s, pi=%s,
+                     domain=%s, role=%s, email=%s
+                 WHERE res_id=%s"""
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, (
+                    r.getName(), r.getInstitution(), r.getPi(),
+                    r.getDomain(), r.getRole(), r.getEmail(),
+                    r.getResId()
+                ))
+            conn.commit()
+
+    def search(self, keyword: str):
+        sql = """SELECT * FROM researcher
+                 WHERE name LIKE %s OR res_id LIKE %s OR email LIKE %s"""
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                k = f'%{keyword}%'
+                cur.execute(sql, (k, k, k))
+                rows = cur.fetchall()
+        return [Researcher(r['res_id'], r['name'], r['institution'],
+                           r['pi'], r['domain'], r['role'], r['email'])
+                for r in rows]

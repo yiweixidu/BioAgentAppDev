@@ -1,8 +1,9 @@
 # models/project.py
 
 class Project:
-    def __init__(self, proj_id, title, domain, grant_src,
-                 pi, status="active", skill=None, progress=0):
+    def __init__(self, proj_id="", title="", domain="",
+                 grant_src="", pi="", status="active",
+                 skill=None, progress=0):
         self.__proj_id  = proj_id
         self.__title    = title
         self.__domain   = domain
@@ -23,6 +24,10 @@ class Project:
     def getProgress(self): return self.__progress
 
     # ── Setters ──────────────────────────────────────────
+    def setProjId(self, v): self.__proj_id = v
+    def setDomain(self, v): self.__domain = v
+    def setGrant(self, v):  self.__grant = v
+    def setPi(self, v):     self.__pi = v
     def setTitle(self, v):    self.__title = v
     def setStatus(self, v):   self.__status = v
     def setSkill(self, v):    self.__skill = v

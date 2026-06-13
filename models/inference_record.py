@@ -1,8 +1,9 @@
 # models/inference_record.py
 
 class InferenceRecord:
-    def __init__(self, inf_id, type, model, project_id,
-                 input, result_summary, timestamp=""):
+    def __init__(self, inf_id="", type="", model="",
+                 project_id="", input="",
+                 result_summary="", timestamp=""):
         self.__inf_id         = inf_id
         self.__type           = type
         self.__model          = model
@@ -21,6 +22,11 @@ class InferenceRecord:
     def getTimestamp(self):     return self.__timestamp
 
     # ── Setters ──────────────────────────────────────────
+    def setInfId(self, v):      self.__inf_id = v
+    def setType(self, v):       self.__type = v
+    def setModel(self, v):      self.__model = v
+    def setProjectId(self, v):  self.__project_id = v
+    def setInput(self, v):      self.__input = v
     def setResultSummary(self, v): self.__result_summary = v
     def setTimestamp(self, v):     self.__timestamp = v
 

@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMainWindow, QPushButton, QLabel, QVBo
 
 from gui.main_window import MainWindow
 
+
 def main():
     # you can instantiate object from QApplication
     app = QApplication(sys.argv)  # event loop object

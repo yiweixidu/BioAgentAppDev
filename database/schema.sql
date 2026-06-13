@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS project (
     proj_id   VARCHAR(10)  PRIMARY KEY,     -- e.g. PRJ-101
     title     VARCHAR(200) NOT NULL,
     domain    VARCHAR(50),
-    grant_src VARCHAR(20),                  -- funding agency e.g. CIHR, NSERC
+    grant_src VARCHAR(20),                  -- funding grant_type e.g. CIHR, NSERC
     pi        VARCHAR(100),
     status    VARCHAR(20)  DEFAULT 'active', -- active | planning | archived
     skill     VARCHAR(50),                  -- assigned AI model
@@ -74,7 +74,7 @@ CREATE TABLE IF NOT EXISTS inference_history (
 CREATE TABLE IF NOT EXISTS grant_fund (
     grant_id   VARCHAR(10)   PRIMARY KEY,   -- e.g. GR-001
     project_id VARCHAR(10)   NOT NULL,
-    agency     VARCHAR(50),                 -- funding agency name
+    grant_type     VARCHAR(50),                 -- funding grant_type name
     deadline   DATE,                        -- grant submission deadline
     total      DECIMAL(12,2) DEFAULT 0,     -- total budget in CAD
     used       DECIMAL(12,2) DEFAULT 0,     -- amount spent so far
@@ -101,4 +101,12 @@ CREATE TABLE IF NOT EXISTS audit_trail (
     action    VARCHAR(50),                  -- CREATE | UPDATE | DELETE | etc.
     entity    VARCHAR(200),                 -- which record was affected
     detail    TEXT                          -- description of the change
+);
+
+-- ── Options Table ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS app_options (
+    id         INT          AUTO_INCREMENT PRIMARY KEY,
+    category   VARCHAR(50)  NOT NULL,   -- 'domain' | 'grant' | 'role' | 'status'
+    value      VARCHAR(100) NOT NULL,
+    UNIQUE KEY uq_cat_val (category, value)
 );

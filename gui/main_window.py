@@ -1,12 +1,12 @@
 # main_window.py – Whimsigoth v2 (lighter + vivid borders)
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
-from gui.tabs.dashboard_tab import DashboardTab
+from gui.tabs.dashboard_tab  import DashboardTab
 from gui.tabs.researcher_tab import ResearcherTab
-from gui.tabs.projects_tab import ProjectsTab
-from gui.tabs.knowledge_tab import KnowledgeTab
+from gui.tabs.projects_tab   import ProjectsTab
+from gui.tabs.knowledge_tab  import KnowledgeTab
 from gui.tabs.hypothesis_tab import HypothesisTab
-from gui.tabs.inference_tab import InferenceTab
-from gui.tabs.grant_tab import GrantTab
+from gui.tabs.inference_tab  import InferenceTab
+from gui.tabs.grant_tab      import GrantTab
 
 QSS = """
 /* ── Root ────────────────────────────────────────────────────────────────── */
@@ -212,18 +212,46 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("BioAgent  ·  Research Management System")
         self.setMinimumSize(1300, 820)
-        c = QWidget(); self.setCentralWidget(c)
+        c = QWidget()
+        self.setCentralWidget(c)
         root = QVBoxLayout(c)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
         root.addWidget(self.tabs)
-        self.tabs.addTab(DashboardTab(),   "📊   Lab Dashboard")
-        self.tabs.addTab(ResearcherTab(),  "👤   Researcher")
-        self.tabs.addTab(ProjectsTab(),    "📁   Research Projects")
-        self.tabs.addTab(KnowledgeTab(),   "🤖   Model Skills")
-        self.tabs.addTab(HypothesisTab(),  "🧪   Hypothesis Panel")
-        self.tabs.addTab(InferenceTab(),   "🧬   Molecular Inference")
-        self.tabs.addTab(GrantTab(),       "📈   Grant Management")
+
+        # Instantiate all tabs and keep named references for signal wiring.
+        self.dashboard_tab   = DashboardTab()
+        self.researcher_tab  = ResearcherTab()
+        self.projects_tab    = ProjectsTab()
+        self.knowledge_tab   = KnowledgeTab()
+        self.hypothesis_tab  = HypothesisTab()
+        self.inference_tab   = InferenceTab()
+        self.grant_tab       = GrantTab()
+
+        self.tabs.addTab(self.dashboard_tab,  "📊   Lab Dashboard")
+        self.tabs.addTab(self.researcher_tab, "👤   Researcher")
+        self.tabs.addTab(self.projects_tab,   "📁   Research Projects")
+        self.tabs.addTab(self.knowledge_tab,  "🤖   Model Skills")
+        self.tabs.addTab(self.hypothesis_tab, "🧪   Hypothesis Panel")
+        self.tabs.addTab(self.inference_tab,  "🧬   Molecular Inference")
+        self.tabs.addTab(self.grant_tab,      "📈   Grant Management")
+
+        # ── Cross-tab signal wiring ────────────────────────────────────────
+        # ProjectsTab saves   → HypothesisTab and InferenceTab project dropdowns
+        self.projects_tab.data_changed.connect(
+            self.hypothesis_tab.refresh_lookups)
+        self.projects_tab.data_changed.connect(
+            self.inference_tab.refresh_lookups)
+
+        # ResearcherTab saves → HypothesisTab researcher dropdown
+        self.researcher_tab.data_changed.connect(
+            self.hypothesis_tab.refresh_lookups)
+
+        # KnowledgeTab saves  → InferenceTab model/skill picker
+        self.knowledge_tab.data_changed.connect(
+            self.inference_tab.refresh_lookups)
+
         self.setStyleSheet(QSS)

@@ -1,8 +1,8 @@
 # models/model_skill.py
 
 class ModelSkill:
-    def __init__(self, skill_id, name, project_id,
-                 lora_version, threshold=200,
+    def __init__(self, skill_id="", name="", project_id="",
+                 lora_version="", threshold=200,
                  benchmark="default_eval",
                  status="inactive", loaded=""):
         self.__skill_id     = skill_id
@@ -25,6 +25,11 @@ class ModelSkill:
     def getLoaded(self):       return self.__loaded
 
     # ── Setters ──────────────────────────────────────────
+    def setSkillId(self, v):    self.__skill_id = v
+    def setName(self, v):       self.__name = v
+    def setProjectId(self, v):  self.__project_id = v
+    def setLoraVersion(self, v): self.__lora_version = v
+    def setLoaded(self, v):     self.__loaded = v
     def setStatus(self, v):     self.__status = v
     def setThreshold(self, v):  self.__threshold = int(v)
     def setBenchmark(self, v):  self.__benchmark = v

@@ -1,11 +1,11 @@
 # models/grant_fund.py
 
 class Grant:
-    def __init__(self, grant_id, project_id, agency,
+    def __init__(self, grant_id, project_id, grant_type,
                  deadline, total, used=0):
         self.__grant_id   = grant_id
         self.__project_id = project_id
-        self.__agency     = agency
+        self.__grant_type = grant_type
         self.__deadline   = str(deadline)
         self.__total      = float(total)
         self.__used       = float(used)
@@ -13,7 +13,7 @@ class Grant:
     # ── Getters ──────────────────────────────────────────
     def getGrantId(self):   return self.__grant_id
     def getProjectId(self): return self.__project_id
-    def getAgency(self):    return self.__agency
+    def getGrantType(self): return self.__grant_type
     def getDeadline(self):  return self.__deadline
     def getTotal(self):     return self.__total
     def getUsed(self):      return self.__used
@@ -36,7 +36,7 @@ class Grant:
         return self.__total - self.__used
 
     def printInfo(self):
-        print(f"{self.__grant_id} // {self.__agency} // "
+        print(f"{self.__grant_id} // {self.__grant_type} // "
               f"${self.__used:,.0f} / ${self.__total:,.0f} "
               f"({self.getBudgetPct()}%)")
 
@@ -44,12 +44,12 @@ class Grant:
         return {
             "id":         self.__grant_id,
             "project_id": self.__project_id,
-            "agency":     self.__agency,
+            "grant_type":     self.__grant_type,
             "deadline":   self.__deadline,
             "total":      self.__total,
             "used":       self.__used,
         }
 
     def __str__(self):
-        return (f"Grant({self.__grant_id}, {self.__agency}, "
+        return (f"Grant({self.__grant_id}, {self.__grant_type}, "
                 f"{self.getBudgetPct()}% used)")
