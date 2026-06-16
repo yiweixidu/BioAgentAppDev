@@ -17,13 +17,41 @@ STATUS_FG2 = {'supported': GREEN, 'refuted': RED, 'pending': WARN}
 
 # ── Sub-widgets ───────────────────────────────────────────────────────────────
 
+class StatCard(QFrame):
+    """
+    One stat tile in the Lab Overview card.
+    Mirrors the HTML .stat-card: large teal number + muted uppercase label.
+    """
+    def __init__(self, value: str, label: str):
+        super().__init__()
+        self.setStyleSheet(
+            f'QFrame{{background:{SURF2};border-radius:10px;border:none;}}')
+        self.setMinimumWidth(110)
+
+        num_lbl = QLabel(str(value))
+        num_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        num_lbl.setStyleSheet(
+            f'color:{TEAL};font-size:28px;font-weight:700;background:transparent;')
+
+        lbl_lbl = QLabel(label.upper())
+        lbl_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_lbl.setStyleSheet(
+            f'color:{TXT_M};font-size:10px;font-weight:700;'
+            f'letter-spacing:0.6px;background:transparent;')
+
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(14, 14, 14, 14)
+        vl.setSpacing(4)
+        vl.addWidget(num_lbl)
+        vl.addWidget(lbl_lbl)
+
+
 class ProjectRow(QFrame):
     """One project row: title + progress bar."""
     def __init__(self, p):
         super().__init__()
         self.setStyleSheet('background:transparent;border:none;')
 
-        # ------------Labels------------
         self.titleLbl = QLabel(p.getTitle())
         self.titleLbl.setStyleSheet(
             f'color:{TXT};font-size:13px;font-weight:500;background:transparent;')
@@ -34,7 +62,6 @@ class ProjectRow(QFrame):
         self.pctLbl.setStyleSheet(
             f'color:{TEAL};font-size:11px;font-weight:600;background:transparent;')
 
-        # ------------Layout------------
         vl = QVBoxLayout(self)
         vl.setContentsMargins(0, 7, 0, 7); vl.setSpacing(5)
         vl.addWidget(self.titleLbl)
@@ -53,7 +80,6 @@ class HypCard(QFrame):
             f'QFrame{{background:{SURF2};border-radius:10px;'
             f'border:none;border-left:3px solid {fg};}}')
 
-        # ------------Labels------------
         self.confLbl = QLabel(f'conf. {h.getConfidence():.2f}')
         self.confLbl.setStyleSheet(
             f'color:{TXT_M};font-size:11px;background:transparent;')
@@ -62,7 +88,6 @@ class HypCard(QFrame):
         self.txtLbl.setStyleSheet(
             f'color:{TXT_S};font-size:12px;background:transparent;')
 
-        # ------------Layout------------
         vl = QVBoxLayout(self)
         vl.setContentsMargins(12, 9, 12, 9); vl.setSpacing(6)
         row = QHBoxLayout()
@@ -101,8 +126,26 @@ class DashboardTab(QWidget):
             layout.addWidget(QLabel(f'DB Error: {e}')); return
 
         today = date.today().isoformat()
+        active_skills = [s for s in skills if s.isActive()]
 
-        # ------------Row 1: Projects + Hypotheses------------
+        # ── Row 0: Lab Overview stat card (NEW) ──────────────────────────────
+        # Mirrors the HTML dashboard .stat-grid with 5 tiles:
+        # Projects · Researchers · Active Skills · Inference Jobs · Grants
+        overview_c, ol = card('📊  Lab Overview', border=ROSE)
+        stat_row = QHBoxLayout()
+        stat_row.setSpacing(12)
+        for value, label in [
+            (len(projects),    'Projects'),
+            (len(researchers), 'Researchers'),
+            (len(active_skills), 'Active Skills'),
+            (len(inferences),  'Inference Jobs'),
+            (len(grants),      'Grants'),
+        ]:
+            stat_row.addWidget(StatCard(value, label))
+        ol.addLayout(stat_row)
+        layout.addWidget(overview_c)
+
+        # ── Row 1: Active Projects + Hypothesis Summary ───────────────────────
         r1 = QHBoxLayout(); r1.setSpacing(14)
 
         proj_c, pl = card('📁  Active Projects', border=TEAL)
@@ -117,30 +160,30 @@ class DashboardTab(QWidget):
         counts = {'supported': 0, 'refuted': 0, 'pending': 0}
         for h in hypotheses:
             if h.getStatus() in counts: counts[h.getStatus()] += 1
-        # Horizontal row with equal spacing between the three stat labels
-        stat_row = QHBoxLayout()
-        stat_row.setSpacing(0)
+        hyp_stat_row = QHBoxLayout()
+        hyp_stat_row.setSpacing(0)
         for stat, color, icon in [
             ('supported', GREEN, '✅'),
             ('refuted',   RED,   '❌'),
-            ('pending',   WARN,  '⏳')
+            ('pending',   WARN,  '⏳'),
         ]:
             lbl = QLabel(f'{icon}  {stat.title()}: {counts[stat]}')
             lbl.setStyleSheet(
                 f'color:{color};font-size:14px;font-weight:600;'
                 f'padding:4px 0;background:transparent;')
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            stat_row.addStretch(1)
-            stat_row.addWidget(lbl)
-        stat_row.addStretch(1)
-        hl.addLayout(stat_row)
+            hyp_stat_row.addStretch(1)
+            hyp_stat_row.addWidget(lbl)
+        hyp_stat_row.addStretch(1)
+        hl.addLayout(hyp_stat_row)
         hl.addWidget(hsep(AMBER + '40'))
-        for h in hypotheses: hl.addWidget(HypCard(h))
+        for h in hypotheses:
+            hl.addWidget(HypCard(h))
         hl.addStretch()
         r1.addWidget(hyp_c, 2)
         layout.addLayout(r1)
 
-        # ------------Row 2: Researchers + Skills------------
+        # ── Row 2: Registered Researchers + Active Skills ─────────────────────
         r2 = QHBoxLayout(); r2.setSpacing(14)
 
         res_c, rl = card('👤  Registered Researchers', border=PURP)
@@ -162,7 +205,7 @@ class DashboardTab(QWidget):
         r2.addWidget(res_c, 1)
 
         sk_c, skl = card('🤖  Active Model Skills', border=GREEN)
-        for s in [s for s in skills if s.isActive()]:
+        for s in active_skills:
             row = QHBoxLayout()
             name_lbl = QLabel(s.getName())
             name_lbl.setStyleSheet(
@@ -181,7 +224,7 @@ class DashboardTab(QWidget):
         r2.addWidget(sk_c, 1)
         layout.addLayout(r2)
 
-        # ------------Row 3: Inference + Grants------------
+        # ── Row 3: Recent Inference Results + Grant Status ────────────────────
         r3 = QHBoxLayout(); r3.setSpacing(14)
 
         inf_c, infl = card('🔬  Recent Inference Results', border=BLUE)
@@ -195,7 +238,7 @@ class DashboardTab(QWidget):
         infl.addStretch()
         r3.addWidget(inf_c, 3)
 
-        gr_c, grl = card('📈  Grant Status', border=ROSE)
+        gr_c, grl = card('📈  Grant Status', border=RED)
         for g in grants:
             pct  = g.getBudgetPct()
             over = g.isOverdue()
@@ -222,4 +265,5 @@ class DashboardTab(QWidget):
         grl.addStretch()
         r3.addWidget(gr_c, 2)
         layout.addLayout(r3)
+
         layout.addStretch()
