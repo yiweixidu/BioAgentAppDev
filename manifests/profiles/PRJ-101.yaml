@@ -1,0 +1,52 @@
+# manifests/profiles/PRJ-101.yaml
+# H5N1 bnAb Broad Neutralization — Vanier College / Dr. Lefrançois
+
+project_id: PRJ-101
+pi: Dr. Lefrançois
+domain: flu_bnab
+
+model_stack:
+  - skill_id: LocalLLM-ESM-2        # base model — platform IP
+    owner: platform
+  - skill_id: SK-002                 # ESM-2 flu-ha-v3 adapter — shared IP
+    owner: shared
+    lab_share_pct: 60
+  - skill_id: LocalLLM-PPI
+    owner: platform
+
+knowledge_sources:
+  pubmed_query: "H5N1 broadly neutralizing antibody hemagglutinin"
+  pdb_targets: ["6XR8", "7KDL"]
+  private_lake: true      # lab's proprietary ELISA / SPR data
+
+fine_tuning:
+  method: LoRA
+  lora_config:
+    r: 16
+    alpha: 32
+    dropout: 0.05
+  mini_pairs_threshold: 150
+
+hypothesis_engine:
+  scan_targets:
+    - "HA binding"
+    - "IL-6 correlation"
+    - "cross-strain neutralization"
+  min_confidence: 0.65
+  kg_cypher: >
+    MATCH (h:Hypothesis)-[:SUPPORTS]->(g:Gene {name:'HA'})
+    RETURN h, g LIMIT 20
+
+benchmarks:
+  ground_truth_pairs: "flu_bnab_eval_v2"
+  threshold: 150
+
+grants:
+  - grant_id: GR-001
+    type: CIHR
+    rag_enabled: true      # activates Grant writing RAG for this grant
+
+ip_rules:
+  base_models: platform
+  lab_skills:  shared      # this lab contributes training data → shared
+  shared_threshold_hrs: 8

@@ -1,111 +1,109 @@
-# gui/tabs/inference_tab.py
-from PyQt6.QtWidgets import (QWidget, QLabel, QPushButton,
-                             QTableWidget, QTableWidgetItem, QMessageBox,
-                             QComboBox, QTextEdit, QGridLayout,
-                             QHBoxLayout, QButtonGroup)
-from PyQt6.QtCore import pyqtSignal
+# gui/tabs/inference_tab.py  — Phase 1 + Report Update
+"""
+InferenceTab — wires the four real skills to the UI.
+L0: every run is logged to audit_chain with ip_owner.
+IP: result box shows ownership. Model picker separates platform vs lab/shared.
+
+New in this version:
+  - Double-click history row → full result viewer dialog
+  - 📄 Export Project Report button → PI-ready PDF
+  - dao.insert() now saves full_output JSON + ip_owner + confidence
+"""
+from PyQt6.QtWidgets import (
+    QWidget, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
+    QMessageBox, QComboBox, QTextEdit, QGridLayout, QHBoxLayout,
+    QButtonGroup, QProgressBar, QFileDialog
+)
+from PyQt6.QtCore import pyqtSignal, QThread
 from datetime import datetime
-from gui.ui_helpers import card, scroll_wrap, setup_table, AMBER, TEAL, GREEN, BLUE, PURP, TXT_M
-from dao.dao_inference   import InferenceDAO
-from dao.dao_project     import ProjectDAO
-from dao.dao_model_skill import ModelSkillDAO
-from dao.dao_audit       import AuditDAO
+import os, shutil
+
+from gui.ui_helpers import (card, scroll_wrap, setup_table,
+                            AMBER, TEAL, GREEN, BLUE, PURP, RED, TXT_M)
+from dao.dao_inference    import InferenceDAO
+from dao.dao_project      import ProjectDAO
+from dao.dao_model_skill  import ModelSkillDAO
+from core.audit_chain     import AuditChain
+from core.project_context import ProjectContext
+from engine.skill_registry import list_for_ui, get, refresh as registry_refresh
 from models.inference_record import InferenceRecord
 
-# ---------------------------------------------------------------------------
-# Inference type pill definitions
-# ---------------------------------------------------------------------------
+# ── Inference type definitions ─────────────────────────────────
 TYPES = [
-    ('🧬', 'DNA Variant'),
-    ('🧪', 'Protein FASTA'),
-    ('🤝', 'PPI Antibody–Antigen'),
-    ('📚', 'Literature RAG'),
+    ('🧬', 'DNA Variant',          'LocalLLM-DNABERT-2'),
+    ('🧪', 'Protein FASTA',        'LocalLLM-ESM-2'),
+    ('🤝', 'PPI Antibody–Antigen', 'LocalLLM-PPI'),
+    ('📚', 'Literature RAG',       'LocalLLM-RAG'),
 ]
-
 TYPE_PH = {
     'DNA Variant':          'chr12:25398284 A>T hg38',
     'Protein FASTA':        '>Ab_VH\nEVQLVESGGG...',
-    'PPI Antibody–Antigen': 'VH/VL sequence  +  antigen PDB ID: 6XR8',
+    'PPI Antibody–Antigen': 'Paste VH sequence\n\nPaste antigen sequence',
     'Literature RAG':       'KRAS G12C inhibitor resistance mechanisms',
 }
+IP_COLOR = {'platform': TEAL, 'lab': AMBER, 'shared': GREEN}
 
-# ---------------------------------------------------------------------------
-# LocalLLM base models — platform-owned, exclusive copyright.
-# Labs may NOT share these externally without consent.
-# ---------------------------------------------------------------------------
-LOCAL_LLM_MODELS = [
-    'LocalLLM-DNABERT-2',
-    'LocalLLM-ESM-2',
-    'LocalLLM-PPI',
-    'LocalLLM-RAG',
-]
-
-# Default base model suggested when a type pill is selected.
-TYPE_DEFAULT_MODEL = {
-    'DNA Variant':          'LocalLLM-DNABERT-2',
-    'Protein FASTA':        'LocalLLM-ESM-2',
-    'PPI Antibody–Antigen': 'LocalLLM-PPI',
-    'Literature RAG':       'LocalLLM-RAG',
-}
-
-# Mock results — placeholder until real AI inference is wired in.
-MOCK = {
-    'DNA Variant': (
-        'LocalLLM-DNABERT-2  ·  Variant Effect Prediction\n' + '─' * 44 + '\n'
-        'Variant:        chr12:25398284 A>T (hg38)\n'
-        'Gene:           KRAS  (p.Gly12Cys)\n'
-        'Effect score:   -1.83   [95% CI: -2.10, -1.56]\n'
-        'Pathogenicity:  LIKELY DAMAGING\n'
-        'Provenance:     PMID:38201847  ·  PMID:36754893  ·  PDB:6XR8'),
-    'Protein FASTA': (
-        'LocalLLM-ESM-2  ·  Binding Affinity\n' + '─' * 44 + '\n'
-        'dG binding:     -12.4 kcal/mol\nKd estimate:    2.3 nM\n'
-        'Stability:      0.81  (stable)\n'
-        'PDB template:   6XR8, 7KDL'),
-    'PPI Antibody–Antigen': (
-        'LocalLLM-PPI  ·  Interface Scoring\n' + '─' * 44 + '\n'
-        'Interaction prob.:  0.92  (HIGH CONFIDENCE)\n'
-        'ddG interface:      -3.2 kcal/mol\n'
-        'Epitope residues:   27-35, 52-58\n'
-        'Provenance:         PDB:6XR8  ·  PMID:38201847'),
-    'Literature RAG': (
-        'LocalLLM-RAG  ·  FAISS Literature Synthesis\n' + '─' * 44 + '\n'
-        '  •  MAPK reactivation (PMID:35039682)\n'
-        '  •  Secondary mutations Y96D/H95D (PMID:36521447)\n'
-        '  •  SOS1 combination (PMID:37123890)\n'
-        'Citation validation:  3/3 sourced'),
-}
-
-# Dropdown section-header labels (inserted as disabled items for visual grouping).
-_SEP_BASE   = '── Base LocalLLM Models ──'
-_SEP_SKILLS = '── Fine-tuned Lab Skills (active) ──'
+_SEP_BASE   = '── Base Models (Platform IP) ──'
+_SEP_SKILLS = '── Fine-tuned Skills (Lab / Shared IP) ──'
 
 
+# ── Background worker (prevents UI freeze) ────────────────────
+class InferenceWorker(QThread):
+    finished = pyqtSignal(object)   # emits SkillResult
+    error    = pyqtSignal(str)
+
+    def __init__(self, skill_id: str, input_text: str, context: dict):
+        super().__init__()
+        self.skill_id   = skill_id
+        self.input_text = input_text
+        self.context    = context
+
+    def run(self):
+        try:
+            skill = get(self.skill_id)
+            if skill is None:
+                self.error.emit(f"Skill '{self.skill_id}' not found in registry")
+                return
+            result = skill.run(self.input_text, self.context)
+            self.finished.emit(result)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
+# ── Main tab ──────────────────────────────────────────────────
 class InferenceTab(QWidget):
-    # Emitted after a successful inference run so MainWindow can forward it.
     data_changed = pyqtSignal()
 
     def __init__(self):
         super().__init__()
-
-        # ------------DAO------------
         self.dao         = InferenceDAO()
         self.project_dao = ProjectDAO()
         self.skill_dao   = ModelSkillDAO()
-        self.audit_dao   = AuditDAO()
+        self._worker     = None   # keep reference to prevent GC
 
-        # ------------Labels (search card)------------
-        self.typeFLabel = QLabel('Type Filter:')
-        self.projFLabel = QLabel('Project Filter:')
+        # ── Filter widgets ──
+        self.typeFLabel   = QLabel('Type Filter:')
+        self.projFLabel   = QLabel('Project Filter:')
+        self.typeFCB      = QComboBox()
+        self.typeFCB.addItem('All Types', None)
+        for _, t, _ in TYPES:
+            self.typeFCB.addItem(t, t)
+        self.projFilterCB = QComboBox()
+        self.projFilterCB.addItem('All Projects', None)
 
-        # ------------Labels (config card)------------
+        # ── Config widgets ──
         self.modelLabel = QLabel('AI Model / Skill:')
         self.projLabel  = QLabel('Save to Project:')
+        self.modelCB    = QComboBox()
+        self.projCB     = QComboBox()
 
-        # ------------Input / Output------------
+        # ── IP badge label ──
+        self.ipLabel = QLabel('IP: —')
+        self.ipLabel.setStyleSheet(f'color:{TEAL};font-weight:700;font-size:11px;')
+
+        # ── Input / output ──
         self.inputBox = QTextEdit()
         self.inputBox.setMaximumHeight(90)
-
         self.resultBox = QTextEdit()
         self.resultBox.setObjectName('ResultBox')
         self.resultBox.setReadOnly(True)
@@ -113,30 +111,17 @@ class InferenceTab(QWidget):
         self.resultBox.setPlaceholderText(
             'Results will appear here after running inference.')
 
-        # Filter dropdowns
-        self.typeFCB = QComboBox()
-        self.typeFCB.addItem('All Types', None)
-        for _, t in TYPES:
-            self.typeFCB.addItem(t, t)
+        # ── Progress bar (shown during inference) ──
+        self.progressBar = QProgressBar()
+        self.progressBar.setRange(0, 0)   # indeterminate
+        self.progressBar.setVisible(False)
+        self.progressBar.setMaximumHeight(4)
 
-        self.projFilterCB = QComboBox()
-        self.projFilterCB.addItem('All Projects', None)
-
-        # Combined model + skill picker (rebuilt by _reload_model_cb)
-        self.modelCB = QComboBox()
-
-        # Project selector for saving results
-        self.projCB = QComboBox()
-
-        # Populate project lists and model picker from DB
-        self._reload_project_cb()
-        self._reload_model_cb()
-
-        # ------------Type pill buttons------------
-        self.btn_group  = QButtonGroup(self)
+        # ── Type pills ──
+        self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)
         self._type_btns = {}
-        for icon, typ in TYPES:
+        for icon, typ, _ in TYPES:
             btn = QPushButton(f'{icon}  {typ}')
             btn.setObjectName('typeBtn')
             btn.setCheckable(True)
@@ -144,48 +129,59 @@ class InferenceTab(QWidget):
             self._type_btns[typ] = btn
         self._type_btns['DNA Variant'].setChecked(True)
 
-        # ------------Buttons------------
+        # ── Buttons ──
         self.searchButton = QPushButton('🔍  Search History')
         self.clearButton  = QPushButton('Clear')
         self.runButton    = QPushButton('▶  Run Inference')
         self.runButton.setObjectName('primaryButton')
         self.resetButton  = QPushButton('Reset Input')
+        self.verifyButton = QPushButton('🔒  Verify Audit Chain')
+        self.exportBtn    = QPushButton('📄  Export Project Report')
 
-        # ------------Table------------
+        # ── History table ──
         self.histTbl = QTableWidget()
         setup_table(self.histTbl,
-            ['Job ID', 'Type', 'Model / Skill', 'Input',
-             'Result Summary', 'Project', 'Timestamp'], 4)
-        self.histTbl.setMaximumHeight(180)
+            ['Job ID', 'Type', 'Model / Skill', 'IP Owner',
+             'Input', 'Result Summary', 'Project', 'Timestamp'], 5)
+        self.histTbl.setMaximumHeight(200)
 
-        # ------------Signals------------
-        self.searchButton.clicked.connect(self.search_button_was_clicked)
-        self.clearButton.clicked.connect(self.clear_button_was_clicked)
-        self.runButton.clicked.connect(self.run_button_was_clicked)
-        self.resetButton.clicked.connect(self.reset_button_was_clicked)
-        self.btn_group.buttonClicked.connect(self.type_button_was_clicked)
+        # ── Populate dropdowns ──
+        self._reload_project_cb()
+        self._reload_model_cb()
 
-        # ------------Layout------------
+        # ── Signals ──
+        self.searchButton.clicked.connect(self._search)
+        self.clearButton.clicked.connect(self._clear_search)
+        self.runButton.clicked.connect(self._run)
+        self.resetButton.clicked.connect(self._reset_input)
+        self.verifyButton.clicked.connect(self._verify_chain)
+        self.exportBtn.clicked.connect(self._export_project_report)
+        self.btn_group.buttonClicked.connect(self._type_pill_clicked)
+        self.modelCB.currentIndexChanged.connect(self._model_changed)
+        # Double-click row → full result viewer
+        self.histTbl.cellDoubleClicked.connect(self._open_result_dialog)
+
+        # ── Layout ──
         _, layout = scroll_wrap(self)
 
-        # Search card
         srch_c, sl = card('🔍  Search Inference History', border=PURP)
-        srch_grid = QGridLayout()
-        srch_grid.addWidget(self.typeFLabel,    0, 0)
-        srch_grid.addWidget(self.typeFCB,       0, 1)
-        srch_grid.addWidget(self.projFLabel,    0, 2)
-        srch_grid.addWidget(self.projFilterCB,  0, 3)
-        srch_grid.addWidget(self.searchButton,  0, 4)
-        srch_grid.addWidget(self.clearButton,   0, 5)
-        sl.addLayout(srch_grid)
+        g = QGridLayout()
+        g.addWidget(self.typeFLabel,   0,0); g.addWidget(self.typeFCB,      0,1)
+        g.addWidget(self.projFLabel,   0,2); g.addWidget(self.projFilterCB, 0,3)
+        g.addWidget(self.searchButton, 0,4); g.addWidget(self.clearButton,  0,5)
+        sl.addLayout(g)
         layout.addWidget(srch_c)
 
-        # History table card
-        hist_c, hl = card('🕐  Inference History', border=TEAL)
+        hist_c, hl = card(
+            '🕐  Inference History  —  double-click row for full result',
+            border=TEAL)
         hl.addWidget(self.histTbl)
+        exp_row = QHBoxLayout()
+        exp_row.addStretch()
+        exp_row.addWidget(self.exportBtn)
+        hl.addLayout(exp_row)
         layout.addWidget(hist_c)
 
-        # Config card — model/skill picker + project selector
         conf_c, cl = card('🧬  Run New Inference', border=AMBER)
         pill_row = QHBoxLayout()
         pill_row.setSpacing(8)
@@ -194,26 +190,25 @@ class InferenceTab(QWidget):
         pill_row.addStretch()
         cl.addLayout(pill_row)
 
-        conf_grid = QGridLayout()
-        conf_grid.addWidget(self.modelLabel, 0, 0)
-        conf_grid.addWidget(self.modelCB,    0, 1)
-        conf_grid.addWidget(self.projLabel,  0, 2)
-        conf_grid.addWidget(self.projCB,     0, 3)
-        cl.addLayout(conf_grid)
+        conf_g = QGridLayout()
+        conf_g.addWidget(self.modelLabel, 0,0); conf_g.addWidget(self.modelCB, 0,1)
+        conf_g.addWidget(self.projLabel,  0,2); conf_g.addWidget(self.projCB,  0,3)
+        conf_g.addWidget(self.ipLabel,    1,0, 1,4)
+        cl.addLayout(conf_g)
         layout.addWidget(conf_c)
 
-        # Input card
         inp_c, il = card('📝  Input', border=GREEN)
         self.inputBox.setPlaceholderText(TYPE_PH['DNA Variant'])
         il.addWidget(self.inputBox)
+        il.addWidget(self.progressBar)
         run_row = QHBoxLayout()
         run_row.addWidget(self.runButton)
         run_row.addWidget(self.resetButton)
+        run_row.addWidget(self.verifyButton)
         run_row.addStretch()
         il.addLayout(run_row)
         layout.addWidget(inp_c)
 
-        # Result card
         res_c, rl = card('📊  Prediction Result', border=BLUE)
         rl.addWidget(self.resultBox)
         layout.addWidget(res_c)
@@ -221,194 +216,312 @@ class InferenceTab(QWidget):
         layout.addStretch()
         self._refresh_history()
 
-    # -----------------------------------------------------------------------
-    # Dropdown reload helpers — stay in sync with ProjectTab / KnowledgeTab
-    # -----------------------------------------------------------------------
+    # ── Dropdown reloaders ────────────────────────────────────
+
     def _reload_project_cb(self):
-        """Reload project options from the project table (mirrors ProjectTab)."""
-        cur_filter = self.projFilterCB.currentData()
-        cur_save   = self.projCB.currentData()
-        self.projFilterCB.blockSignals(True)
-        self.projCB.blockSignals(True)
-        self.projFilterCB.clear()
-        self.projCB.clear()
+        for cb in (self.projFilterCB, self.projCB):
+            cb.blockSignals(True)
+            cb.clear()
         self.projFilterCB.addItem('All Projects', None)
         try:
             for p in self.project_dao.get_all():
-                label = f"{p.getProjId()} – {p.getTitle()}"
-                self.projFilterCB.addItem(label, p.getProjId())
-                self.projCB.addItem(label, p.getProjId())
+                lbl = f"{p.getProjId()} – {p.getTitle()}"
+                self.projFilterCB.addItem(lbl, p.getProjId())
+                self.projCB.addItem(lbl, p.getProjId())
         except Exception as e:
             QMessageBox.warning(self, 'DB Error', str(e))
-        for i in range(self.projFilterCB.count()):
-            if self.projFilterCB.itemData(i) == cur_filter:
-                self.projFilterCB.setCurrentIndex(i); break
-        for i in range(self.projCB.count()):
-            if self.projCB.itemData(i) == cur_save:
-                self.projCB.setCurrentIndex(i); break
-        self.projFilterCB.blockSignals(False)
-        self.projCB.blockSignals(False)
+        for cb in (self.projFilterCB, self.projCB):
+            cb.blockSignals(False)
 
     def _reload_model_cb(self):
-        """
-        Rebuild the AI model / skill picker.
-
-        Dropdown structure:
-          ── Base LocalLLM Models ──        (disabled header)
-            🔬  LocalLLM-DNABERT-2
-            🔬  LocalLLM-ESM-2
-            ...
-          ── Fine-tuned Lab Skills ──       (disabled header)
-            🛠  SK-001 · LoRA / flu-ha-v3  [PRJ-101]
-            🛠  SK-002 · QLoRA             [PRJ-102]
-            ...
-
-        Base models: platform-owned, exclusive copyright.
-        Skills:      lab-owned, shared copyright, no third-party disclosure.
-        Section headers are disabled items used purely for visual grouping.
-        """
-        cur_text = self.modelCB.currentText()
+        cur = self.modelCB.currentData()
         self.modelCB.blockSignals(True)
         self.modelCB.clear()
 
-        # Section 1 — base LocalLLM models
         self.modelCB.addItem(_SEP_BASE)
-        self.modelCB.model().item(self.modelCB.count() - 1).setEnabled(False)
-        for m in LOCAL_LLM_MODELS:
-            self.modelCB.addItem(f'🔬  {m}', ('base', m))
+        self.modelCB.model().item(self.modelCB.count()-1).setEnabled(False)
 
-        # Section 2 — active fine-tuned skills from model_skill table (KnowledgeTab)
+        skills = list_for_ui()
+        for s in skills:
+            if s["is_base"]:
+                self.modelCB.addItem(s["label"], s["skill_id"])
+
         self.modelCB.addItem(_SEP_SKILLS)
-        self.modelCB.model().item(self.modelCB.count() - 1).setEnabled(False)
-        try:
-            active_skills = self.skill_dao.get_active()
-        except Exception:
-            active_skills = []
+        self.modelCB.model().item(self.modelCB.count()-1).setEnabled(False)
 
-        if active_skills:
-            for s in active_skills:
-                ver_part = f' / {s.getLoraVersion()}' if s.getLoraVersion() else ''
-                label = (f'🛠  {s.getSkillId()} · {s.getName()}{ver_part}'
-                         f'  [{s.getProjectId()}]')
-                self.modelCB.addItem(label, ('skill', s.getSkillId(), s.getName()))
+        lab_skills = [s for s in skills if not s["is_base"]]
+        if lab_skills:
+            for s in lab_skills:
+                self.modelCB.addItem(s["label"], s["skill_id"])
         else:
-            ph_idx = self.modelCB.count()
-            self.modelCB.addItem('  (no active skills — assign one in Model Skills tab)')
-            self.modelCB.model().item(ph_idx).setEnabled(False)
+            idx = self.modelCB.count()
+            self.modelCB.addItem('  (no active lab skills)')
+            self.modelCB.model().item(idx).setEnabled(False)
 
-        # Restore previous selection; fall back to first selectable item (index 1)
-        idx = self.modelCB.findText(cur_text)
-        self.modelCB.setCurrentIndex(idx if idx >= 0 else 1)
+        restore = self.modelCB.findData(cur)
+        self.modelCB.setCurrentIndex(restore if restore >= 0 else 1)
         self.modelCB.blockSignals(False)
+        self._update_ip_label()
 
-    # -----------------------------------------------------------------------
-    # Public slot — called by MainWindow when ProjectTab or KnowledgeTab saves
-    # -----------------------------------------------------------------------
     def refresh_lookups(self):
-        """Re-sync project and model/skill dropdowns without resetting form data."""
+        """Called by MainWindow when ProjectTab or KnowledgeTab saves."""
+        registry_refresh()
         self._reload_project_cb()
         self._reload_model_cb()
 
-    # -----------------------------------------------------------------------
-    # History table
-    # -----------------------------------------------------------------------
-    def _refresh_history(self):
-        try:
-            history = self.dao.get_all()
-            titles  = self.project_dao.get_titles()
-        except Exception as e:
-            QMessageBox.warning(self, 'DB Error', str(e)); return
-        self._populate_table(history, titles)
+    # ── IP label ─────────────────────────────────────────────
 
-    def _populate_table(self, history, titles=None):
-        if titles is None:
-            try:
-                titles = self.project_dao.get_titles()
-            except Exception:
-                titles = {}
-        self.histTbl.setRowCount(len(history))
-        for r, h in enumerate(history):
-            for c, v in enumerate([
-                h.getInfId(),    h.getType(),   h.getModel(),
-                h.getInput(),    h.getResultSummary(),
-                titles.get(h.getProjectId(), h.getProjectId()),
-                h.getTimestamp()
-            ]):
-                self.histTbl.setItem(r, c, QTableWidgetItem(str(v)))
+    def _update_ip_label(self):
+        skill_id = self.modelCB.currentData()
+        if not skill_id:
+            self.ipLabel.setText('IP: —')
+            return
+        skill = get(skill_id)
+        if skill:
+            owner = skill.owner
+            color = IP_COLOR.get(owner, TXT_M)
+            self.ipLabel.setStyleSheet(
+                f'color:{color};font-weight:700;font-size:11px;')
+            self.ipLabel.setText(
+                f'IP ownership: {owner.upper()}   '
+                f'{"(BioAgent exclusive)" if owner=="platform" else "(lab data contributed)"}'
+            )
 
-    # -----------------------------------------------------------------------
-    # Signals
-    # -----------------------------------------------------------------------
-    def type_button_was_clicked(self, btn):
+    def _model_changed(self, _):
+        self._update_ip_label()
+        skill_id = self.modelCB.currentData()
+        mapping = {
+            'LocalLLM-DNABERT-2': 'DNA Variant',
+            'LocalLLM-ESM-2':     'Protein FASTA',
+            'LocalLLM-PPI':       'PPI Antibody–Antigen',
+            'LocalLLM-RAG':       'Literature RAG',
+        }
+        suggested = mapping.get(skill_id)
+        if suggested and suggested in self._type_btns:
+            self._type_btns[suggested].setChecked(True)
+            self.inputBox.setPlaceholderText(TYPE_PH[suggested])
+
+    # ── Type pill ────────────────────────────────────────────
+
+    def _type_pill_clicked(self, btn):
         typ = next(t for t, b in self._type_btns.items() if b is btn)
-        self.inputBox.setPlaceholderText(TYPE_PH.get(typ, 'Enter input...'))
+        self.inputBox.setPlaceholderText(TYPE_PH.get(typ, ''))
+        default_map = {
+            'DNA Variant':          'LocalLLM-DNABERT-2',
+            'Protein FASTA':        'LocalLLM-ESM-2',
+            'PPI Antibody–Antigen': 'LocalLLM-PPI',
+            'Literature RAG':       'LocalLLM-RAG',
+        }
+        skill_id = default_map.get(typ)
+        if skill_id:
+            idx = self.modelCB.findData(skill_id)
+            if idx >= 0:
+                self.modelCB.setCurrentIndex(idx)
 
-        # Suggest the matching base model only if the user has not picked a skill
-        cur_data = self.modelCB.currentData()
-        if cur_data is None or (isinstance(cur_data, tuple) and cur_data[0] == 'base'):
-            suggested = TYPE_DEFAULT_MODEL.get(typ)
-            if suggested:
-                for i in range(self.modelCB.count()):
-                    if self.modelCB.itemData(i) == ('base', suggested):
-                        self.modelCB.setCurrentIndex(i); break
+    # ── Run inference ─────────────────────────────────────────
 
-    def search_button_was_clicked(self):
-        typ_filter  = self.typeFCB.currentData()
-        proj_filter = self.projFilterCB.currentData()
-        try:
-            history = self.dao.get_all()
-            titles  = self.project_dao.get_titles()
-            if typ_filter:
-                history = [h for h in history if h.getType() == typ_filter]
-            if proj_filter:
-                history = [h for h in history if h.getProjectId() == proj_filter]
-        except Exception as e:
-            QMessageBox.warning(self, 'DB Error', str(e)); return
-        self._populate_table(history, titles)
-
-    def clear_button_was_clicked(self):
-        self.typeFCB.setCurrentIndex(0)
-        self.projFilterCB.setCurrentIndex(0)
-        self._refresh_history()
-
-    def run_button_was_clicked(self):
+    def _run(self):
         inp = self.inputBox.toPlainText().strip()
         if not inp:
             QMessageBox.warning(self, 'Input', 'Provide input data.'); return
 
-        typ = next(t for t, b in self._type_btns.items() if b.isChecked())
-        pid = self.projCB.currentData()
+        skill_id = self.modelCB.currentData()
+        if not skill_id:
+            QMessageBox.warning(self, 'Model', 'Select a model/skill.'); return
 
-        # Determine human-readable model label for storage
-        cur_data = self.modelCB.currentData()
-        if isinstance(cur_data, tuple) and cur_data[0] == 'base':
-            model_label = cur_data[1]                           # e.g. 'LocalLLM-DNABERT-2'
-        elif isinstance(cur_data, tuple) and cur_data[0] == 'skill':
-            model_label = f"{cur_data[1]} ({cur_data[2]})"     # e.g. 'SK-001 (LoRA)'
-        else:
-            model_label = self.modelCB.currentText().strip()
+        proj_id = self.projCB.currentData()
+        try:
+            ctx     = ProjectContext.load(proj_id) if proj_id else ProjectContext.load("UNKNOWN")
+            context = ctx.to_dict()
+        except Exception:
+            context = {"project_id": proj_id or ""}
 
-        # Use mock result; replace with real inference call when AI is wired in
-        txt = MOCK.get(typ, 'Result unavailable.')
-        self.resultBox.setPlainText(txt)
+        self.runButton.setEnabled(False)
+        self.progressBar.setVisible(True)
+        self.resultBox.setPlainText('Running inference…')
 
+        self._worker = InferenceWorker(skill_id, inp, context)
+        self._worker.finished.connect(self._on_result)
+        self._worker.error.connect(self._on_error)
+        self._worker.start()
+
+    def _on_result(self, result):
+        """Called in main thread when inference completes."""
+        self.progressBar.setVisible(False)
+        self.runButton.setEnabled(True)
+        self.resultBox.setPlainText(result.to_display_text())
+
+        proj_id = self.projCB.currentData()
+        inp     = self.inputBox.toPlainText().strip()
+        typ     = next((t for t, b in self._type_btns.items()
+                        if b.isChecked()), 'Unknown')
         try:
             jid = f"INF-{self.dao.count() + 1:03d}"
             rec = InferenceRecord(
-                jid, typ, model_label, pid,
+                jid, typ, result.skill_id, proj_id,
                 (inp[:42] + '…') if len(inp) > 42 else inp,
-                txt.split('\n')[2] if '\n' in txt else txt[:50],
-                datetime.now().strftime('%Y-%m-%d %H:%M')
+                result.to_summary_line(),
+                str(datetime.now().strftime('%Y-%m-%d %H:%M')),
             )
-            self.dao.insert(rec)
-            self.audit_dao.add(model_label, 'INFERENCE', jid,
-                               f'Type={typ} · Project={pid}')
+            # Attach extras so DAO can persist them
+            rec.confidence = result.confidence
+            rec.ip_owner   = result.ip_owner
+
+            # Pass full_output for provenance storage
+            self.dao.insert(rec, full_output=result.full_output)
+
+            # L0: log to audit chain with IP owner
+            AuditChain.log(
+                user_id     = "system",
+                action      = "INFERENCE",
+                entity_type = "inference",
+                entity_id   = jid,
+                detail      = (f"type={typ} skill={result.skill_id} "
+                               f"conf={result.confidence:.2f}"),
+                project_id  = proj_id,
+                ip_owner    = result.ip_owner,
+            )
         except Exception as e:
             QMessageBox.warning(self, 'DB Error', str(e)); return
 
         self.data_changed.emit()
         self._refresh_history()
 
-    def reset_button_was_clicked(self):
+    def _on_error(self, msg: str):
+        self.progressBar.setVisible(False)
+        self.runButton.setEnabled(True)
+        self.resultBox.setPlainText(f'[ERROR]\n{msg}')
+
+    # ── Audit chain verify ────────────────────────────────────
+
+    def _verify_chain(self):
+        try:
+            ok, msg = AuditChain.verify_chain(limit=500)
+        except Exception as e:
+            QMessageBox.warning(self, 'Audit', str(e)); return
+        icon = '✅' if ok else '❌'
+        QMessageBox.information(self, 'Audit Chain Integrity',
+                                f'{icon}  {msg}')
+
+    # ── Full result dialog (double-click) ─────────────────────
+
+    def _open_result_dialog(self, row: int, col: int):
+        """Double-click a history row → open full result viewer."""
+        inf_id_item = self.histTbl.item(row, 0)
+        if not inf_id_item:
+            return
+        try:
+            records = self.dao.get_all()
+            record  = next((r for r in records
+                            if r.getInfId() == inf_id_item.text()), None)
+            if not record:
+                return
+            proj_id = record.getProjectId()
+            project = None
+            if proj_id:
+                project = next((p for p in self.project_dao.get_all()
+                                if p.getProjId() == proj_id), None)
+            from gui.tabs.inference_result_dialog import InferenceResultDialog
+            dlg = InferenceResultDialog(record, project, self)
+            dlg.exec()
+        except Exception as e:
+            QMessageBox.warning(self, 'Error', str(e))
+
+    # ── Export project report ─────────────────────────────────
+
+    def _export_project_report(self):
+        """Export all inference results for selected project as PDF."""
+        proj_id = self.projFilterCB.currentData()
+        try:
+            records = (self.dao.get_by_project(proj_id)
+                       if proj_id else self.dao.get_all())
+            if not records:
+                QMessageBox.information(
+                    self, 'No Data',
+                    'No inference records found for selected project.')
+                return
+
+            project    = None
+            grants     = []
+            hypotheses = []
+            if proj_id:
+                project = next((p for p in self.project_dao.get_all()
+                                if p.getProjId() == proj_id), None)
+                from dao.dao_grant      import GrantDAO
+                from dao.dao_hypothesis import HypothesisDAO
+                grants     = [g for g in GrantDAO().get_all()
+                              if g.getProjectId() == proj_id]
+                hypotheses = HypothesisDAO().get_by_project(proj_id)
+
+            default_name = f"BioAgent_{proj_id or 'All'}_Report.pdf"
+            path, _ = QFileDialog.getSaveFileName(
+                self, 'Save PDF Report', default_name,
+                'PDF Files (*.pdf)')
+            if not path:
+                return
+
+            from core.report_generator import ReportGenerator
+            out = ReportGenerator.generate_project_report(
+                project_id = proj_id or "ALL",
+                records    = records,
+                project    = project,
+                grants     = grants,
+                hypotheses = hypotheses,
+                output_dir = os.path.dirname(path) or ".",
+            )
+            if out != path:
+                shutil.move(out, path)
+            QMessageBox.information(
+                self, 'Report Exported', f'PDF saved:\n{path}')
+        except Exception as e:
+            QMessageBox.warning(self, 'Export Error', str(e))
+
+    # ── History ───────────────────────────────────────────────
+
+    def _refresh_history(self):
+        try:
+            history = self.dao.get_all()
+            titles  = self.project_dao.get_titles()
+        except Exception as e:
+            QMessageBox.warning(self, 'DB Error', str(e)); return
+        self.histTbl.setRowCount(len(history))
+        for r, h in enumerate(history):
+            for c, v in enumerate([
+                h.getInfId(), h.getType(), h.getModel(),
+                getattr(h, 'ip_owner', '—'),
+                h.getInput(), h.getResultSummary(),
+                titles.get(h.getProjectId(), h.getProjectId() or '—'),
+                h.getTimestamp(),
+            ]):
+                self.histTbl.setItem(r, c, QTableWidgetItem(str(v)))
+
+    def _search(self):
+        typ_f  = self.typeFCB.currentData()
+        proj_f = self.projFilterCB.currentData()
+        try:
+            history = self.dao.get_all()
+            titles  = self.project_dao.get_titles()
+            if typ_f:
+                history = [h for h in history if h.getType() == typ_f]
+            if proj_f:
+                history = [h for h in history if h.getProjectId() == proj_f]
+        except Exception as e:
+            QMessageBox.warning(self, 'DB Error', str(e)); return
+        self.histTbl.setRowCount(len(history))
+        for r, h in enumerate(history):
+            for c, v in enumerate([
+                h.getInfId(), h.getType(), h.getModel(),
+                getattr(h, 'ip_owner', '—'),
+                h.getInput(), h.getResultSummary(),
+                titles.get(h.getProjectId(), '—'), h.getTimestamp(),
+            ]):
+                self.histTbl.setItem(r, c, QTableWidgetItem(str(v)))
+
+    def _clear_search(self):
+        self.typeFCB.setCurrentIndex(0)
+        self.projFilterCB.setCurrentIndex(0)
+        self._refresh_history()
+
+    def _reset_input(self):
         self.inputBox.setPlainText('')
         self.resultBox.setPlainText('')

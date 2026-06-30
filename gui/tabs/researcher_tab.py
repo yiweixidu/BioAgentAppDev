@@ -11,9 +11,9 @@ from dao.dao_audit       import AuditDAO
 from dao.dao_options     import OptionsDAO
 from models.researcher   import Researcher
 from gui.manage_options_dialog import ManageOptionsDialog
-from config.db_config          import MANAGE_ROLES
+from core.session import Session
 
-CURRENT_USER_ROLE = 'admin'
+# role now read from Session at runtime
 MANAGE_ITEM       = '⚙  Manage options...'
 ROLE_CLR = {'admin': AMBER, 'lab_manager': TEAL, 'researcher': GREEN}
 
@@ -154,7 +154,7 @@ class ResearcherTab(QWidget):
         self.domainCB.clear()
         opts = self.options_dao.get_by_category('domain')
         self.domainCB.addItems(opts)
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.domainCB.insertSeparator(len(opts))
             self.domainCB.addItem(MANAGE_ITEM)
         idx = self.domainCB.findText(current)
@@ -169,7 +169,7 @@ class ResearcherTab(QWidget):
         self.roleCB.clear()
         opts = self.options_dao.get_by_category('role')
         self.roleCB.addItems(opts)
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.roleCB.insertSeparator(len(opts))
             self.roleCB.addItem(MANAGE_ITEM)
         idx = self.roleCB.findText(current)

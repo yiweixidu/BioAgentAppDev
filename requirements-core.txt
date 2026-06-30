@@ -1,0 +1,14 @@
+# BioAgent Phase 1 — requirements-core.txt
+
+# ── UI ────────────────────────────────────────────────────────
+PyQt6>=6.6.0
+matplotlib>=3.8.0          # dashboard chart dialogs (project progress / grant spending)
+
+# ── Database ──────────────────────────────────────────────────
+PyMySQL>=1.1.0
+
+# ── Config ────────────────────────────────────────────────────
+PyYAML>=6.0
+
+# ── Reporting ─────────────────────────────────────────────────
+reportlab>=4.4.0           # PDF report export (core/report_generator.py)

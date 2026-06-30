@@ -1,0 +1,18 @@
+# ── AI / ML — Phase 1 ────────────────────────────────────────
+# Core transformer models (DNABERT-2, ESM-2)
+torch>=2.1.0
+transformers>=4.38.0
+einops>=0.7.0              # optional dep used by DNABERT-2 loader
+
+# RAG pipeline
+sentence-transformers>=2.6.0
+faiss-cpu>=1.7.4           # use faiss-gpu if CUDA available
+
+# LLaMA local inference (RAG synthesis) — active in Phase 1
+# Install with: pip install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+llama-cpp-python>=0.2.50   # requires llama-3-8b-instruct.Q4_K_M.gguf in data/models/
+huggingface-hub>=0.20.0    # used to download the .gguf model file
+
+# ── MLOps (Phase 2 — not yet active) ──────────────────────────
+# mlflow>=2.11.0           # uncomment when MLOps pipeline is active
+ 

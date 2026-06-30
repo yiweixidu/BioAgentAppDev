@@ -10,9 +10,9 @@ from dao.dao_audit   import AuditDAO
 from dao.dao_options import OptionsDAO
 from models.project  import Project
 from gui.manage_options_dialog import ManageOptionsDialog
-from config.db_config          import MANAGE_ROLES
+from core.session import Session
 
-CURRENT_USER_ROLE = 'admin'
+# role now read from Session at runtime
 MANAGE_ITEM = '⚙  Manage options...'
 
 STATUS_CLR = {'active': TEAL, 'planning': PURP, 'archived': TXT_M}
@@ -167,7 +167,7 @@ class ProjectsTab(QWidget):
         self.statusCB.clear()
         opts = self.options_dao.get_by_category('status')
         self.statusCB.addItems(opts)
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.statusCB.insertSeparator(len(opts))
             self.statusCB.addItem(MANAGE_ITEM)
         idx = self.statusCB.findText(current)
@@ -180,7 +180,7 @@ class ProjectsTab(QWidget):
         self.domainCB.clear()
         opts = self.options_dao.get_by_category('domain')
         self.domainCB.addItems(opts)
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.domainCB.insertSeparator(len(opts))
             self.domainCB.addItem(MANAGE_ITEM)
         idx = self.domainCB.findText(current)
@@ -194,7 +194,7 @@ class ProjectsTab(QWidget):
         self.grantCB.clear()
         opts = self.options_dao.get_by_category('grant')
         self.grantCB.addItems(opts)
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.grantCB.insertSeparator(len(opts))
             self.grantCB.addItem(MANAGE_ITEM)
         idx = self.grantCB.findText(current)

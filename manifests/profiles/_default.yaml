@@ -1,0 +1,45 @@
+# manifests/profiles/_default.yaml
+# Fallback profile — used when no project-specific profile exists.
+
+project_id: UNKNOWN
+pi: ""
+domain: general
+
+model_stack:
+  - skill_id: LocalLLM-DNABERT-2
+    owner: platform
+  - skill_id: LocalLLM-ESM-2
+    owner: platform
+  - skill_id: LocalLLM-PPI
+    owner: platform
+  - skill_id: LocalLLM-RAG
+    owner: platform
+
+knowledge_sources:
+  pubmed_query: ""
+  pdb_targets: []
+  private_lake: false
+
+fine_tuning:
+  method: LoRA
+  lora_config:
+    r: 8
+    alpha: 16
+    dropout: 0.1
+  mini_pairs_threshold: 200
+
+hypothesis_engine:
+  scan_targets: []
+  min_confidence: 0.60
+  kg_cypher: ""
+
+benchmarks:
+  ground_truth_pairs: "default_eval"
+  threshold: 200
+
+grants: []
+
+ip_rules:
+  base_models: platform
+  lab_skills:  lab
+  shared_threshold_hrs: 8   # hours of your contribution that triggers 'shared'

@@ -12,9 +12,9 @@ from dao.dao_project import ProjectDAO
 from dao.dao_audit   import AuditDAO
 from dao.dao_options import OptionsDAO
 from models.milestone  import Milestone
-from config.db_config import MANAGE_ROLES
+from core.session import Session
 
-CURRENT_USER_ROLE = 'admin'     # replace with session later
+# role now read from Session at runtime
 MANAGE_ITEM       = '⚙  Manage options...'
 
 
@@ -214,7 +214,7 @@ class GrantTab(QWidget):
         except Exception as e:
             pass
 
-        if CURRENT_USER_ROLE in MANAGE_ROLES:
+        if Session.can_manage_options():
             self.grantCB.insertSeparator(self.grantCB.count())
             self.grantCB.addItem(MANAGE_ITEM)
 

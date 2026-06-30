@@ -98,6 +98,32 @@ class HypCard(QFrame):
         vl.addWidget(self.txtLbl)
 
 
+# ── NEW: Clickable card wrapper for chart pop-ups ─────────────────────────────
+
+class ClickableCard(QFrame):
+    """
+    Thin QFrame wrapper that forwards mouseDoubleClickEvent to a callback.
+    Used to make 'Active Projects' and 'Grant Status' cards open chart dialogs.
+    Wraps the QFrame returned by card() without altering its internal layout.
+    """
+    def __init__(self, inner_frame: QFrame, on_double_click, parent=None):
+        super().__init__(parent)
+        self._on_double_click = on_double_click
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet('background:transparent;border:none;')
+        vl = QVBoxLayout(self)
+        vl.setContentsMargins(0, 0, 0, 0)
+        vl.addWidget(inner_frame)
+
+        # Subtle hover hint
+        self.setToolTip("Double-click to view chart")
+
+    def mouseDoubleClickEvent(self, event):
+        if self._on_double_click:
+            self._on_double_click()
+        super().mouseDoubleClickEvent(event)
+
+
 # ── Main tab ──────────────────────────────────────────────────────────────────
 
 class DashboardTab(QWidget):
@@ -125,6 +151,11 @@ class DashboardTab(QWidget):
         except Exception as e:
             layout.addWidget(QLabel(f'DB Error: {e}')); return
 
+        # Keep references for the chart dialogs
+        self._all_projects = projects
+        self._all_grants = grants
+        self._all_milestones = milestones
+
         today = date.today().isoformat()
         active_skills = [s for s in skills if s.isActive()]
 
@@ -148,13 +179,18 @@ class DashboardTab(QWidget):
         # ── Row 1: Active Projects + Hypothesis Summary ───────────────────────
         r1 = QHBoxLayout(); r1.setSpacing(14)
 
-        proj_c, pl = card('📁  Active Projects', border=TEAL)
+        proj_c, pl = card(
+            '📁  Active Projects  —  double-click for progress chart',
+            border=TEAL)
         active = [p for p in projects if p.isActive()]
         for i, p in enumerate(active):
             pl.addWidget(ProjectRow(p))
             if i < len(active) - 1: pl.addWidget(hsep(TEAL + '40'))
         pl.addStretch()
-        r1.addWidget(proj_c, 3)
+        # Wrap in ClickableCard so double-click opens the progress chart
+        proj_clickable = ClickableCard(
+            proj_c, self._open_project_progress_dialog)
+        r1.addWidget(proj_clickable, 3)
 
         hyp_c, hl = card('🧪  Hypothesis Summary', border=AMBER)
         counts = {'supported': 0, 'refuted': 0, 'pending': 0}
@@ -238,7 +274,9 @@ class DashboardTab(QWidget):
         infl.addStretch()
         r3.addWidget(inf_c, 3)
 
-        gr_c, grl = card('📈  Grant Status', border=RED)
+        gr_c, grl = card(
+            '📈  Grant Status  —  double-click for spending chart',
+            border=RED)
         for g in grants:
             pct  = g.getBudgetPct()
             over = g.isOverdue()
@@ -263,7 +301,25 @@ class DashboardTab(QWidget):
                 f'color:{RED};font-weight:600;padding:6px 0;background:transparent;')
             grl.addWidget(w)
         grl.addStretch()
-        r3.addWidget(gr_c, 2)
+        # Wrap in ClickableCard so double-click opens the spending chart
+        gr_clickable = ClickableCard(
+            gr_c, self._open_grant_spending_dialog)
+        r3.addWidget(gr_clickable, 2)
         layout.addLayout(r3)
 
         layout.addStretch()
+
+        # ── Chart dialog launchers ────────────────────────────────────────────
+
+    def _open_project_progress_dialog(self):
+        """Double-click on Active Projects card → matplotlib bar chart."""
+        from gui.tabs.dashboard_chart_dialogs import ProjectProgressDialog
+        dlg = ProjectProgressDialog(self._all_projects, self)
+        dlg.exec()
+
+    def _open_grant_spending_dialog(self):
+        """Double-click on Grant Status card → matplotlib spending timeline."""
+        from gui.tabs.dashboard_chart_dialogs import GrantSpendingDialog
+        dlg = GrantSpendingDialog(
+            self._all_grants, self._all_milestones, self)
+        dlg.exec()

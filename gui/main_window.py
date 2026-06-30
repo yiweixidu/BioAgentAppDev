@@ -1,5 +1,8 @@
 # main_window.py – Whimsigoth v2 (lighter + vivid borders)
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (QMainWindow, QTabWidget, QVBoxLayout,
+                             QHBoxLayout, QWidget, QLabel, QPushButton,
+                             QMessageBox)
+from PyQt6.QtCore import pyqtSignal
 from gui.tabs.dashboard_tab  import DashboardTab
 from gui.tabs.researcher_tab import ResearcherTab
 from gui.tabs.projects_tab   import ProjectsTab
@@ -7,6 +10,8 @@ from gui.tabs.knowledge_tab  import KnowledgeTab
 from gui.tabs.hypothesis_tab import HypothesisTab
 from gui.tabs.inference_tab  import InferenceTab
 from gui.tabs.grant_tab      import GrantTab
+from core.session            import Session
+from core.audit_chain        import AuditChain
 
 QSS = """
 /* ── Root ────────────────────────────────────────────────────────────────── */
@@ -208,6 +213,9 @@ QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
 
 
 class MainWindow(QMainWindow):
+    # Emitted when user clicks Logout — main.py listens and restarts login loop
+    logout_requested = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("BioAgent  ·  Research Management System")
@@ -217,6 +225,32 @@ class MainWindow(QMainWindow):
         root = QVBoxLayout(c)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
+
+        # ── Top bar: current user + logout ──────────────────────────────
+        topbar = QWidget()
+        topbar.setStyleSheet(
+            "background:#0F1929;border-bottom:1px solid #2A3F5C;")
+        topbar.setFixedHeight(40)
+        tb = QHBoxLayout(topbar)
+        tb.setContentsMargins(16, 0, 16, 0)
+
+        user_lbl = QLabel(f"👤  {Session.display_label()}")
+        user_lbl.setStyleSheet(
+            "color:#7A9EB8;font-size:12px;background:transparent;")
+        tb.addWidget(user_lbl)
+        tb.addStretch()
+
+        self.logoutBtn = QPushButton("🚪  Logout")
+        self.logoutBtn.setStyleSheet(
+            "QPushButton{background:#1C2D44;color:#7A9EB8;"
+            "border:1px solid #2A3F5C;border-radius:14px;"
+            "padding:4px 16px;font-size:11px;}"
+            "QPushButton:hover{background:#243858;color:#E53E3E;"
+            "border-color:#E53E3E;}")
+        self.logoutBtn.clicked.connect(self._handle_logout)
+        tb.addWidget(self.logoutBtn)
+
+        root.addWidget(topbar)
 
         self.tabs = QTabWidget()
         self.tabs.setDocumentMode(True)
@@ -255,3 +289,28 @@ class MainWindow(QMainWindow):
             self.inference_tab.refresh_lookups)
 
         self.setStyleSheet(QSS)
+
+    # ── Logout ───────────────────────────────────────────────────────
+    def _handle_logout(self):
+        reply = QMessageBox.question(
+            self, "Confirm Logout",
+            f"Log out of {Session.current_name()}'s session?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            AuditChain.log(
+                user_id     = Session.res_id(),
+                action      = "LOGOUT",
+                entity_type = "session",
+                entity_id   = Session.res_id(),
+                detail      = f"role={Session.current_role()}",
+                ip_owner    = "platform",
+            )
+        except Exception:
+            pass
+
+        Session.clear()
+        self.logout_requested.emit()
+        self.close()
